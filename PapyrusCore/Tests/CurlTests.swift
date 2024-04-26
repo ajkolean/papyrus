@@ -1,6 +1,6 @@
 import XCTest
 @testable import PapyrusCore
-
+import InlineSnapshotTesting
 
 final class CurlTests: XCTestCase {
     func testConvertPath() throws {
@@ -8,13 +8,14 @@ final class CurlTests: XCTestCase {
 
         let request = try TestRequest(from: req)
         
-        // Assert Multi Line
-        XCTAssertEqual(request.curl(sortedHeaders: true), """
-        curl 'foo/baz' \\
-        -X bar \\
-        -H 'Content-Length: 0' \\
-        -H 'Content-Type: application/json'
-        """)
+        assertInlineSnapshot(of: request.curl(sortedHeaders: true), as: .description) {
+            #"""
+            curl 'foo/baz' \
+            -X bar \
+            -H 'Content-Length: 0' \
+            -H 'Content-Type: application/json'
+            """#
+        }
     }
 
     func testConvertHeaders() async throws {
@@ -23,45 +24,47 @@ final class CurlTests: XCTestCase {
         req.addHeader("High", value: "Ground")
 
         let request = try TestRequest(from: req)
-
-        let normalizedCurl = request.curl(sortedHeaders: true)
-
-        XCTAssertEqual(normalizedCurl, """
-        curl 'foo/baz' \\
-        -X GET \\
-        -H 'Content-Length: 0' \\
-        -H 'Content-Type: application/json' \\
-        -H 'Hello: There' \\
-        -H 'High: Ground'
-        """)
+        
+        assertInlineSnapshot(of: request.curl(sortedHeaders: true), as: .description) {
+            #"""
+            curl 'foo/baz' \
+            -X GET \
+            -H 'Content-Length: 0' \
+            -H 'Content-Type: application/json' \
+            -H 'Hello: There' \
+            -H 'High: Ground'
+            """#
+        }
     }
 
     func testConvertMultipart() throws {
         var req = RequestBuilder(baseURL: "foo/", method: "bar", path: "/baz")
-        let encoder = MultipartEncoder(boundary: UUID().uuidString)
+        let encoder = MultipartEncoder(boundary: UUID.mockString)
         req.requestEncoder = encoder
         req.addField("a", value: Part(data: Data("one".utf8), fileName: "one.txt", mimeType: "text/plain"))
         req.addField("b", value: Part(data: Data("two".utf8)))
 
         let request = try TestRequest(from: req)
-
-        XCTAssertEqual(request.curl(sortedHeaders: true), """
-        curl 'foo/baz' \\
-        -X bar \\
-        -H 'Content-Length: 266' \\
-        -H 'Content-Type: multipart/form-data; boundary=\(encoder.boundary)' \\
-        -d '--\(encoder.boundary)\r
-        Content-Disposition: form-data; name="a"; filename="one.txt"\r
-        Content-Type: text/plain\r
-        \r
-        one\r
-        --\(encoder.boundary)\r
-        Content-Disposition: form-data; name="b"\r
-        \r
-        two\r
-        --\(encoder.boundary)--\r
-        '
-        """)
+        
+        assertInlineSnapshot(of: request.curl(sortedHeaders: true), as: .description) {
+            #"""
+            curl 'foo/baz' \
+            -X bar \
+            -H 'Content-Length: 266' \
+            -H 'Content-Type: multipart/form-data; boundary=00000000-0000-0000-0000-000000000000' \
+            -d '--00000000-0000-0000-0000-000000000000\#r
+            Content-Disposition: form-data; name="a"; filename="one.txt"\#r
+            Content-Type: text/plain\#r
+            \#r
+            one\#r
+            --00000000-0000-0000-0000-000000000000\#r
+            Content-Disposition: form-data; name="b"\#r
+            \#r
+            two\#r
+            --00000000-0000-0000-0000-000000000000--\#r
+            '
+            """#
+        }
     }
 
     func testConvertJSON() async throws {
@@ -73,19 +76,19 @@ final class CurlTests: XCTestCase {
         req.addField("b", value: "two")
 
         let request = try TestRequest(from: req)
-
-        let s = """
-        curl 'foo/baz' \\
-        -X bar \\
-        -H 'Content-Length: 32' \\
-        -H 'Content-Type: application/json' \\
-        -d '{
-          "a" : "one",
-          "b" : "two"
-        }'
-        """
-
-        XCTAssertEqual(request.curl(sortedHeaders: true), s)
+        
+        assertInlineSnapshot(of: request.curl(sortedHeaders: true), as: .description) {
+            #"""
+            curl 'foo/baz' \
+            -X bar \
+            -H 'Content-Length: 32' \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "a" : "one",
+              "b" : "two"
+            }'
+            """#
+        }
     }
 
     func testConvertURLForm() async throws {
@@ -95,17 +98,19 @@ final class CurlTests: XCTestCase {
         req.addField("b", value: "two")
 
         let request = try TestRequest(from: req)
-
+        
         let normalizedCurl = request.curl(sortedHeaders: true)
             .replacingOccurrences(of: "b=two&a=one", with: "a=one&b=two")
 
-        XCTAssertEqual(normalizedCurl, """
-        curl 'foo/baz' \\
-        -X bar \\
-        -H 'Content-Length: 11' \\
-        -H 'Content-Type: application/x-www-form-urlencoded' \\
-        -d 'a=one&b=two'
-        """)
+        assertInlineSnapshot(of: normalizedCurl, as: .description) {
+            #"""
+            curl 'foo/baz' \
+            -X bar \
+            -H 'Content-Length: 11' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            -d 'a=one&b=two'
+            """#
+        }
     }
 
     func testInterceptorAlways() async throws {
@@ -127,14 +132,16 @@ final class CurlTests: XCTestCase {
         XCTAssertNotNil(message, "Logger did not output")
         
         guard let message else { return }
-
-        XCTAssertEqual(message, """
-        curl 'foo/baz?Hello=There' \\
-        -X GET \\
-        -H 'Content-Length: 0' \\
-        -H 'Content-Type: application/json' \\
-        -H 'High: Ground'
-        """)
+        
+        assertInlineSnapshot(of: message, as: .description) {
+            #"""
+            curl 'foo/baz?Hello=There' \
+            -X GET \
+            -H 'Content-Length: 0' \
+            -H 'Content-Type: application/json' \
+            -H 'High: Ground'
+            """#
+        }
     }
 
     func testInterceptorOnError() async throws {
@@ -156,14 +163,16 @@ final class CurlTests: XCTestCase {
 
         XCTAssertNotNil(message, "Logger did not output")
         guard let message else { return }
-
-        XCTAssertEqual(message, """
-        curl 'foo/baz?Hello=There' \\
-        -X GET \\
-        -H 'Content-Length: 0' \\
-        -H 'Content-Type: application/json' \\
-        -H 'High: Ground'
-        """)
+        
+        assertInlineSnapshot(of: message, as: .description) {
+            #"""
+            curl 'foo/baz?Hello=There' \
+            -X GET \
+            -H 'Content-Length: 0' \
+            -H 'Content-Type: application/json' \
+            -H 'High: Ground'
+            """#
+        }
     }
 
     func testInterceptorOnErrorNoError() async throws {
@@ -184,7 +193,7 @@ final class CurlTests: XCTestCase {
         }
 
         XCTAssertNil(message, "Logger did output")
-    }
+            }
 }
 
 private struct TestResponse: Response {
@@ -194,6 +203,7 @@ private struct TestResponse: Response {
     var statusCode: Int? = nil
     var error: Error? = nil
 }
+
 
 private struct TestRequest: Request {
     var method: String
